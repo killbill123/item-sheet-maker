@@ -147,12 +147,12 @@ namespace ItemSheetMaker
             props.Controls.Add(txtCode); props.Controls.Add(btnAdd); y += 34;
             hint("Press Enter after each code, or paste a list.", 14, y, 18); y += 24;
 
-            lstItems = new ListBox { Left = 14, Top = y, Width = 292, Height = 196, SelectionMode = SelectionMode.MultiExtended,
+            lstItems = new ListBox { Left = 14, Top = y, Width = 292, Height = 174, SelectionMode = SelectionMode.MultiExtended,
                 DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 24, BorderStyle = BorderStyle.FixedSingle, BackColor = PanelAlt,
                 ForeColor = Text1, IntegralHeight = false };
             lstItems.DrawItem += DrawListItem;
             lstItems.KeyDown += (s, e) => { if (e.KeyCode == Keys.Delete) RemoveSelected(); };
-            props.Controls.Add(lstItems); y += 202;
+            props.Controls.Add(lstItems); y += 180;
             var btnUp = Btn("Up", false); var btnDown = Btn("Down", false);
             var btnRemove = Btn("Remove", false); var btnClear = Btn("Clear", false);
             int bx = 14;
@@ -167,10 +167,12 @@ namespace ItemSheetMaker
             props.Controls.Add(lblCount); y += 28;
 
             section("Artboard", y); y += 38;
-            lbl("Title", 14, y + 3);
-            txtTitle = DarkText(80, y, 226);
+            lbl("Sheet heading", 14, y);
+            y += 20;
+            txtTitle = DarkText(14, y, 292);
+            txtTitle.HandleCreated += (s, e) => SetCueBanner(txtTitle, "e.g. client name (printed at top)");
             txtTitle.TextChanged += (s, e) => { QueueRefresh(); UpdateDocTab(); };
-            props.Controls.Add(txtTitle); y += 32;
+            props.Controls.Add(txtTitle); y += 34;
 
             rbAuto = new RadioButton { Text = "Auto-fit all items on one page", Left = 14, Top = y, Width = 290, Checked = true, ForeColor = Text1 };
             props.Controls.Add(rbAuto); y += 26;
@@ -345,11 +347,28 @@ namespace ItemSheetMaker
                     Warn, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
         }
 
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
+
+        /// <summary>Light grey example text shown while the box is empty (Windows EM_SETCUEBANNER).</summary>
+        static void SetCueBanner(TextBox box, string text)
+        {
+            try { SendMessage(box.Handle, 0x1501, (IntPtr)1, text); } catch { }
+        }
+
+        void UpdateArtboardLabel()
+        {
+            if (preview == null || txtTitle == null) return;
+            var name = string.IsNullOrWhiteSpace(txtTitle.Text) ? "Artboard " + (pageIndex + 1) : txtTitle.Text.Trim();
+            preview.Label = (pageIndex + 1).ToString("00") + " - " + name + "  (Letter)";
+        }
+
         void UpdateDocTab()
         {
             if (docTab == null) return;
             var name = string.IsNullOrWhiteSpace(txtTitle.Text) ? "Untitled sheet" : txtTitle.Text.Trim();
             docTab.Text = name + " @ Fit  (Letter 8.5 x 11 in)";
+            UpdateArtboardLabel();
         }
 
         // ---------- rendering ----------
@@ -396,6 +415,7 @@ namespace ItemSheetMaker
             if (lblStatus != null) lblStatus.Text = items.Count + (items.Count == 1 ? " item" : " items") + "   |   " +
                 (o.AutoFit ? "Auto-fit" : cols + " x " + rows + " grid") + "   |   8.5 x 11 in   |   Export 300 DPI   |   " +
                 (string.IsNullOrEmpty(lib.Folder) ? "No photos folder" : lib.Count + " photos in folder");
+            UpdateArtboardLabel();
             preview.SetPage(SheetRenderer.RenderPage(pages[pageIndex], cols, rows, o, lib, 110f, pageIndex + 1, pages.Count));
         }
 

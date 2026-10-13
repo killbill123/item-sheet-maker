@@ -198,6 +198,8 @@ namespace ItemSheetMaker
     class PagePreview : Control
     {
         Image img;
+        string label = "01 - Artboard 1  (Letter)";
+        public string Label { get { return label; } set { if (value != label) { label = value; Invalidate(); } } }
         public PagePreview() { DoubleBuffered = true; SetStyle(ControlStyles.ResizeRedraw, true); }
         public void SetPage(Image i) { var old = img; img = i; Invalidate(); if (old != null) old.Dispose(); }
         protected override void OnPaint(PaintEventArgs e)
@@ -211,7 +213,7 @@ namespace ItemSheetMaker
             float w = img.Width * sc, h = img.Height * sc;
             var r = new RectangleF((Width - w) / 2, (Height - h) / 2 + 8, w, h);
             using (var f = new Font("Segoe UI", 8.25f)) using (var b = new SolidBrush(Color.FromArgb(0xD0, 0xD0, 0xD0)))
-                g.DrawString("01 - Artboard 1  (Letter)", f, b, r.X, r.Y - 18);
+                g.DrawString(label, f, b, r.X, r.Y - 18);
             using (var b = new SolidBrush(Color.FromArgb(70, 0, 0, 0))) g.FillRectangle(b, r.X + 4, r.Y + 4, r.Width, r.Height);
             g.DrawImage(img, r);
             using (var pen = new Pen(Color.FromArgb(0x2A, 0x2A, 0x2A))) g.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
