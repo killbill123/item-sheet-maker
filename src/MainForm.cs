@@ -19,7 +19,7 @@ namespace ItemSheetMaker
         RadioButton rbAuto, rbFixed;
         NumericUpDown numCols, numRows, numFont;
         CheckBox chkTrim;
-        PictureBox preview;
+        PagePreview preview;
         Button btnPrev, btnNext;
         int pageIndex = 0;
         Timer refreshTimer;
@@ -34,90 +34,159 @@ namespace ItemSheetMaker
             }
         }
 
+        // Illustrator-style dark workspace palette
+        public static readonly Color Chrome = Color.FromArgb(0x26, 0x26, 0x26);   // app bar, borders
+        public static readonly Color Panel = Color.FromArgb(0x32, 0x32, 0x32);    // panels
+        public static readonly Color PanelAlt = Color.FromArgb(0x2C, 0x2C, 0x2C);
+        public static readonly Color Canvas = Color.FromArgb(0x53, 0x53, 0x53);   // pasteboard
+        public static readonly Color Field = Color.FromArgb(0x24, 0x24, 0x24);
+        public static readonly Color Hover = Color.FromArgb(0x45, 0x45, 0x45);
+        public static readonly Color Text1 = Color.FromArgb(0xE6, 0xE6, 0xE6);
+        public static readonly Color Text2 = Color.FromArgb(0xA8, 0xA8, 0xA8);
+        public static readonly Color Line = Color.FromArgb(0x1E, 0x1E, 0x1E);
+        public static readonly Color Blue = Color.FromArgb(0x14, 0x73, 0xE6);     // primary action
+        public static readonly Color BlueDark = Color.FromArgb(0x0D, 0x66, 0xD0);
+        public static readonly Color Select = Color.FromArgb(0x2B, 0x4A, 0x73);
+        public static readonly Color Warn = Color.FromArgb(0xF2, 0x9A, 0x2E);
+
+        static Button Btn(string text, bool primary)
+        {
+            var b = new Button
+            {
+                Text = text, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Height = 28,
+                BackColor = primary ? Blue : Color.FromArgb(0x3A, 0x3A, 0x3A), ForeColor = primary ? Color.White : Text1,
+                Font = new Font("Segoe UI", 9f, primary ? FontStyle.Bold : FontStyle.Regular), UseVisualStyleBackColor = false
+            };
+            b.FlatAppearance.BorderSize = primary ? 0 : 1;
+            b.FlatAppearance.BorderColor = Color.FromArgb(0x50, 0x50, 0x50);
+            b.FlatAppearance.MouseOverBackColor = primary ? BlueDark : Hover;
+            b.FlatAppearance.MouseDownBackColor = primary ? BlueDark : Hover;
+            return b;
+        }
+
+        static TextBox DarkText(int x, int y, int w)
+        {
+            return new TextBox { Left = x, Top = y, Width = w, BorderStyle = BorderStyle.FixedSingle, BackColor = Field, ForeColor = Text1 };
+        }
+
+        static NumericUpDown DarkNum(int x, int y, int w, int min, int max, int val)
+        {
+            return new NumericUpDown { Left = x, Top = y, Width = w, Minimum = min, Maximum = max, Value = val,
+                BorderStyle = BorderStyle.FixedSingle, BackColor = Field, ForeColor = Text1 };
+        }
+
+        DocTab docTab;
+        Label lblStatus;
+
         public MainForm()
         {
             Text = "Item Sheet Maker";
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            Width = 1200; Height = 820;
-            MinimumSize = new Size(900, 600);
+            Width = 1280; Height = 860;
+            MinimumSize = new Size(980, 640);
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = new Font("Segoe UI", 9f);
+            BackColor = Panel;
+            ForeColor = Text1;
             KeyPreview = true;
 
-            var left = new Panel { Dock = DockStyle.Left, Width = 360, AutoScroll = true, Padding = new Padding(10) };
-            var right = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(225, 228, 232) };
-            Controls.Add(right);
-            Controls.Add(left);
+            // ----- frame: app bar, tool strip, properties panel, status bar, canvas -----
+            var appBar = new AppBar { Dock = DockStyle.Top, Height = 40 };
+            var status = new Panel { Dock = DockStyle.Bottom, Height = 26, BackColor = Chrome };
+            var tools = new ToolRail { Dock = DockStyle.Left, Width = 46 };
+            var props = new Panel { Dock = DockStyle.Right, Width = 330, AutoScroll = true, BackColor = Panel };
+            props.Controls.Add(new Panel { Dock = DockStyle.Left, Width = 1, BackColor = Line });
+            var center = new Panel { Dock = DockStyle.Fill, BackColor = Canvas };
+            Controls.Add(center);
+            Controls.Add(props);
+            Controls.Add(tools);
+            Controls.Add(status);
+            Controls.Add(appBar);
 
-            int y = 10;
-            Func<string, int, Label> header = (t, yy) =>
+            docTab = new DocTab { Dock = DockStyle.Top, Height = 30 };
+            preview = new PagePreview { Dock = DockStyle.Fill, BackColor = Canvas };
+            center.Controls.Add(preview);
+            center.Controls.Add(docTab);
+
+            // ----- properties panel -----
+            int y = 0;
+            Func<string, int, PanelHeader> section = (t, yy) =>
             {
-                var l = new Label { Text = t, Left = 10, Top = yy, AutoSize = true, Font = new Font("Segoe UI", 10f, FontStyle.Bold) };
-                left.Controls.Add(l); return l;
+                var h = new PanelHeader { Text = t, Left = 1, Top = yy, Width = 312, Height = 30 };
+                props.Controls.Add(h); return h;
+            };
+            Func<string, int, int, int, Label> hint = (t, xx, yy, h) =>
+            {
+                var l = new Label { Text = t, Left = xx, Top = yy, Width = 290, Height = h, ForeColor = Text2, Font = new Font("Segoe UI", 8.25f) };
+                props.Controls.Add(l); return l;
+            };
+            Func<string, int, int, Label> lbl = (t, xx, yy) =>
+            {
+                var l = new Label { Text = t, Left = xx, Top = yy, AutoSize = true, ForeColor = Text2 };
+                props.Controls.Add(l); return l;
             };
 
-            header("1. Photos folder", y); y += 26;
-            txtFolder = new TextBox { Left = 10, Top = y, Width = 250, ReadOnly = true };
-            var btnBrowse = new Button { Text = "Browse...", Left = 265, Top = y - 1, Width = 75 };
+            section("Photos", y); y += 38;
+            txtFolder = DarkText(14, y + 2, 206); txtFolder.ReadOnly = true;
+            var btnBrowse = Btn("Browse...", false); btnBrowse.Left = 226; btnBrowse.Top = y; btnBrowse.Width = 80;
             btnBrowse.Click += (s, e) => BrowseFolder();
-            left.Controls.Add(txtFolder); left.Controls.Add(btnBrowse); y += 28;
-            lblFolderInfo = new Label { Left = 10, Top = y, Width = 330, Height = 32, ForeColor = Color.DimGray,
-                Text = "Photo file names must be the item code, e.g. WOP-187A.jpg" };
-            left.Controls.Add(lblFolderInfo); y += 40;
+            props.Controls.Add(txtFolder); props.Controls.Add(btnBrowse); y += 34;
+            lblFolderInfo = hint("Photo file names must be the item code, e.g. WOP-187A.jpg", 14, y, 30); y += 38;
 
-            header("2. Item codes", y); y += 26;
-            txtCode = new TextBox { Left = 10, Top = y, Width = 250, CharacterCasing = CharacterCasing.Upper,
-                AutoCompleteMode = AutoCompleteMode.SuggestAppend, AutoCompleteSource = AutoCompleteSource.CustomSource };
-            var btnAdd = new Button { Text = "Add", Left = 265, Top = y - 1, Width = 75 };
+            section("Items", y); y += 38;
+            txtCode = DarkText(14, y + 2, 206);
+            txtCode.CharacterCasing = CharacterCasing.Upper; txtCode.Font = new Font("Segoe UI", 10f);
+            txtCode.AutoCompleteMode = AutoCompleteMode.SuggestAppend; txtCode.AutoCompleteSource = AutoCompleteSource.CustomSource;
+            var btnAdd = Btn("Add", true); btnAdd.Left = 226; btnAdd.Top = y; btnAdd.Width = 80;
             btnAdd.Click += (s, e) => AddCodes(txtCode.Text);
             txtCode.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Enter) { AddCodes(txtCode.Text); e.Handled = true; e.SuppressKeyPress = true; }
             };
-            left.Controls.Add(txtCode); left.Controls.Add(btnAdd); y += 26;
-            left.Controls.Add(new Label { Left = 10, Top = y, Width = 330, Height = 30, ForeColor = Color.DimGray,
-                Text = "Type a code and press Enter. You can also paste many codes separated by commas, spaces or new lines." });
-            y += 34;
+            props.Controls.Add(txtCode); props.Controls.Add(btnAdd); y += 34;
+            hint("Press Enter after each code, or paste a list.", 14, y, 18); y += 24;
 
-            lstItems = new ListBox { Left = 10, Top = y, Width = 250, Height = 220, SelectionMode = SelectionMode.MultiExtended,
-                DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 20 };
+            lstItems = new ListBox { Left = 14, Top = y, Width = 292, Height = 196, SelectionMode = SelectionMode.MultiExtended,
+                DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 24, BorderStyle = BorderStyle.FixedSingle, BackColor = PanelAlt,
+                ForeColor = Text1, IntegralHeight = false };
             lstItems.DrawItem += DrawListItem;
             lstItems.KeyDown += (s, e) => { if (e.KeyCode == Keys.Delete) RemoveSelected(); };
-            left.Controls.Add(lstItems);
-            var btnUp = new Button { Text = "Up", Left = 265, Top = y, Width = 75 };
-            var btnDown = new Button { Text = "Down", Left = 265, Top = y + 30, Width = 75 };
-            var btnRemove = new Button { Text = "Remove", Left = 265, Top = y + 70, Width = 75 };
-            var btnClear = new Button { Text = "Clear all", Left = 265, Top = y + 100, Width = 75 };
+            props.Controls.Add(lstItems); y += 202;
+            var btnUp = Btn("Up", false); var btnDown = Btn("Down", false);
+            var btnRemove = Btn("Remove", false); var btnClear = Btn("Clear", false);
+            int bx = 14;
+            foreach (var b in new[] { btnUp, btnDown, btnRemove, btnClear }) { b.Left = bx; b.Top = y; b.Width = 69; bx += 74; }
             btnUp.Click += (s, e) => MoveItem(-1);
             btnDown.Click += (s, e) => MoveItem(1);
             btnRemove.Click += (s, e) => RemoveSelected();
             btnClear.Click += (s, e) => { if (items.Count > 0 && Confirm("Remove all items?")) { items.Clear(); RefreshAll(); } };
-            left.Controls.AddRange(new Control[] { btnUp, btnDown, btnRemove, btnClear });
-            y += 224;
-            lblCount = new Label { Left = 10, Top = y, Width = 330, Height = 20 };
-            left.Controls.Add(lblCount); y += 28;
+            props.Controls.AddRange(new Control[] { btnUp, btnDown, btnRemove, btnClear });
+            y += 34;
+            lblCount = new Label { Left = 14, Top = y, Width = 292, Height = 20, Font = new Font("Segoe UI", 8.25f) };
+            props.Controls.Add(lblCount); y += 28;
 
-            header("3. Sheet layout", y); y += 26;
-            left.Controls.Add(new Label { Text = "Title (optional):", Left = 10, Top = y + 3, AutoSize = true });
-            txtTitle = new TextBox { Left = 110, Top = y, Width = 230 };
-            txtTitle.TextChanged += (s, e) => QueueRefresh();
-            left.Controls.Add(txtTitle); y += 30;
+            section("Artboard", y); y += 38;
+            lbl("Title", 14, y + 3);
+            txtTitle = DarkText(80, y, 226);
+            txtTitle.TextChanged += (s, e) => { QueueRefresh(); UpdateDocTab(); };
+            props.Controls.Add(txtTitle); y += 32;
 
-            rbAuto = new RadioButton { Text = "Auto-fit all items on one page", Left = 10, Top = y, Width = 330, Checked = true };
-            left.Controls.Add(rbAuto); y += 24;
-            rbFixed = new RadioButton { Text = "Fixed grid:", Left = 10, Top = y, Width = 90 };
-            numCols = new NumericUpDown { Left = 105, Top = y, Width = 50, Minimum = 1, Maximum = 8, Value = 4 };
-            left.Controls.Add(new Label { Text = "columns  x", Left = 158, Top = y + 3, AutoSize = true });
-            numRows = new NumericUpDown { Left = 225, Top = y, Width = 50, Minimum = 1, Maximum = 10, Value = 2 };
-            left.Controls.Add(new Label { Text = "rows", Left = 278, Top = y + 3, AutoSize = true });
-            left.Controls.AddRange(new Control[] { rbFixed, numCols, numRows }); y += 30;
+            rbAuto = new RadioButton { Text = "Auto-fit all items on one page", Left = 14, Top = y, Width = 290, Checked = true, ForeColor = Text1 };
+            props.Controls.Add(rbAuto); y += 26;
+            rbFixed = new RadioButton { Text = "Grid", Left = 14, Top = y, Width = 60, ForeColor = Text1 };
+            numCols = DarkNum(80, y, 50, 1, 8, 4);
+            lbl("cols  x", 134, y + 3);
+            numRows = DarkNum(184, y, 50, 1, 10, 2);
+            lbl("rows", 238, y + 3);
+            props.Controls.AddRange(new Control[] { rbFixed, numCols, numRows }); y += 32;
 
-            left.Controls.Add(new Label { Text = "Code text size (pt):", Left = 10, Top = y + 3, AutoSize = true });
-            numFont = new NumericUpDown { Left = 130, Top = y, Width = 55, Minimum = 6, Maximum = 36, Value = 12 };
-            left.Controls.Add(numFont); y += 30;
-            chkTrim = new CheckBox { Text = "Trim white space around photos", Left = 10, Top = y, Width = 330, Checked = true };
-            left.Controls.Add(chkTrim); y += 34;
+            lbl("Code size", 14, y + 3);
+            numFont = DarkNum(80, y, 50, 6, 36, 12);
+            lbl("pt", 134, y + 3);
+            props.Controls.Add(numFont); y += 30;
+            chkTrim = new CheckBox { Text = "Trim white space around photos", Left = 14, Top = y, Width = 290, Checked = true, ForeColor = Text1 };
+            props.Controls.Add(chkTrim); y += 34;
 
             foreach (Control c in new Control[] { rbAuto, rbFixed, numCols, numRows, numFont, chkTrim })
             {
@@ -126,28 +195,50 @@ namespace ItemSheetMaker
                 else ((NumericUpDown)c).ValueChanged += (s, e) => { if (c != numFont) rbFixed.Checked = true; QueueRefresh(); };
             }
 
-            header("4. Save", y); y += 28;
-            var btnPdf = new Button { Text = "Save as PDF", Left = 10, Top = y, Width = 105, Height = 34, BackColor = Color.FromArgb(0, 120, 212), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            var btnJpg = new Button { Text = "Save as JPEG", Left = 122, Top = y, Width = 105, Height = 34 };
-            var btnPrint = new Button { Text = "Print...", Left = 234, Top = y, Width = 105, Height = 34 };
+            section("Export", y); y += 40;
+            var btnPdf = Btn("Export PDF", true);
+            var btnJpg = Btn("Export JPEG", false);
+            var btnPrint = Btn("Print...", false);
+            btnPdf.Left = 14; btnJpg.Left = 112; btnPrint.Left = 210;
+            foreach (var b in new[] { btnPdf, btnJpg, btnPrint }) { b.Top = y; b.Width = 94; b.Height = 32; }
             btnPdf.Click += (s, e) => SavePdf();
             btnJpg.Click += (s, e) => SaveJpeg();
             btnPrint.Click += (s, e) => Print();
-            left.Controls.AddRange(new Control[] { btnPdf, btnJpg, btnPrint });
-            y += 44;
+            props.Controls.AddRange(new Control[] { btnPdf, btnJpg, btnPrint });
+            y += 50;
+            props.Controls.Add(new Panel { Left = 0, Top = y, Width = 10, Height = 1, BackColor = Panel });
 
-            // preview side
-            var nav = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = Color.FromArgb(245, 246, 248) };
-            btnPrev = new Button { Text = "< Prev", Left = 10, Top = 5, Width = 70 };
-            btnNext = new Button { Text = "Next >", Left = 200, Top = 5, Width = 70 };
-            lblPage = new Label { Left = 85, Top = 10, Width = 110, TextAlign = ContentAlignment.TopCenter, Text = "Page 1 of 1" };
+            // ----- tool rail -----
+            tools.Add("Photos folder (Ctrl+O)", ToolRail.Icon.Folder, () => BrowseFolder());
+            tools.Add("Add item code (Ctrl+N)", ToolRail.Icon.Plus, () => { txtCode.Focus(); txtCode.SelectAll(); });
+            tools.Add("Toggle auto-fit / grid (Ctrl+G)", ToolRail.Icon.Grid, () => { if (rbAuto.Checked) rbFixed.Checked = true; else rbAuto.Checked = true; });
+            tools.AddSeparator();
+            tools.Add("Export PDF (Ctrl+E)", ToolRail.Icon.Pdf, () => SavePdf());
+            tools.Add("Export JPEG (Ctrl+J)", ToolRail.Icon.Image, () => SaveJpeg());
+            tools.Add("Print (Ctrl+P)", ToolRail.Icon.Printer, () => Print());
+            KeyDown += (s, e) =>
+            {
+                if (!e.Control) return;
+                if (e.KeyCode == Keys.O) BrowseFolder();
+                else if (e.KeyCode == Keys.N) txtCode.Focus();
+                else if (e.KeyCode == Keys.G) { if (rbAuto.Checked) rbFixed.Checked = true; else rbAuto.Checked = true; }
+                else if (e.KeyCode == Keys.E) SavePdf();
+                else if (e.KeyCode == Keys.J) SaveJpeg();
+                else if (e.KeyCode == Keys.P) Print();
+                else return;
+                e.Handled = true; e.SuppressKeyPress = true;
+            };
+
+            // ----- status bar: artboard navigation -----
+            btnPrev = Btn("<", false); btnPrev.Left = 8; btnPrev.Top = 3; btnPrev.Width = 26; btnPrev.Height = 20;
+            lblPage = new Label { Left = 36, Top = 5, Width = 92, TextAlign = ContentAlignment.TopCenter, Text = "Page 1 of 1", ForeColor = Text1 };
+            btnNext = Btn(">", false); btnNext.Left = 130; btnNext.Top = 3; btnNext.Width = 26; btnNext.Height = 20;
+            btnPrev.Font = btnNext.Font = new Font("Segoe UI", 8f, FontStyle.Bold);
             btnPrev.Click += (s, e) => { pageIndex--; RefreshPreview(); };
             btnNext.Click += (s, e) => { pageIndex++; RefreshPreview(); };
-            nav.Controls.AddRange(new Control[] { btnPrev, lblPage, btnNext });
-            nav.Controls.Add(new Label { Left = 290, Top = 10, AutoSize = true, ForeColor = Color.DimGray, Text = "Preview — Letter size 8.5 x 11 in" });
-            preview = new PictureBox { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.FromArgb(225, 228, 232), Padding = new Padding(12) };
-            right.Controls.Add(preview);
-            right.Controls.Add(nav);
+            lblStatus = new Label { Left = 170, Top = 5, Width = 700, ForeColor = Text2, Text = "" };
+            status.Controls.AddRange(new Control[] { btnPrev, lblPage, btnNext, lblStatus });
+            UpdateDocTab();
 
             refreshTimer = new Timer { Interval = 250 };
             refreshTimer.Tick += (s, e) => { refreshTimer.Stop(); RefreshPreview(); };
@@ -226,15 +317,39 @@ namespace ItemSheetMaker
         void DrawListItem(object sender, DrawItemEventArgs e)
         {
             if (e.Index < 0 || e.Index >= items.Count) return;
-            e.DrawBackground();
+            var g = e.Graphics;
             var code = items[e.Index];
             bool found = lib.Find(code) != null;
             bool sel = (e.State & DrawItemState.Selected) != 0;
-            var color = sel ? SystemColors.HighlightText : (found ? Color.Black : Color.Firebrick);
-            string text = (e.Index + 1) + ".  " + code + (found ? "" : "   (no photo found)");
-            TextRenderer.DrawText(e.Graphics, text, lstItems.Font, new Rectangle(e.Bounds.X + 4, e.Bounds.Y, e.Bounds.Width - 4, e.Bounds.Height),
-                color, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
-            e.DrawFocusRectangle();
+            using (var bg = new SolidBrush(sel ? Select : (e.Index % 2 == 0 ? PanelAlt : Color.FromArgb(0x30, 0x30, 0x30))))
+                g.FillRectangle(bg, e.Bounds);
+            if (sel) using (var bar = new SolidBrush(Blue)) g.FillRectangle(bar, e.Bounds.X, e.Bounds.Y, 3, e.Bounds.Height);
+            // tiny thumbnail swatch like a layer row
+            var sw = new Rectangle(e.Bounds.X + 32, e.Bounds.Y + 2, 20, 20);
+            using (var b = new SolidBrush(found ? Color.White : Color.FromArgb(0x55, 0x40, 0x20))) g.FillRectangle(b, sw);
+            var th = found ? lib.Load(code, chkTrim.Checked) : null;
+            if (th != null)
+            {
+                float sc = Math.Min(18f / th.Width, 18f / th.Height);
+                float tw = th.Width * sc, thh = th.Height * sc;
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.DrawImage(th, sw.X + 1 + (18 - tw) / 2, sw.Y + 1 + (18 - thh) / 2, tw, thh);
+            }
+            using (var pen = new Pen(Color.FromArgb(0x60, 0x60, 0x60))) g.DrawRectangle(pen, sw);
+            TextRenderer.DrawText(g, (e.Index + 1).ToString(), lstItems.Font, new Rectangle(e.Bounds.X + 8, e.Bounds.Y, 26, e.Bounds.Height),
+                Text2, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            TextRenderer.DrawText(g, code, lstItems.Font, new Rectangle(e.Bounds.X + 60, e.Bounds.Y, e.Bounds.Width - 60, e.Bounds.Height),
+                found ? Text1 : Warn, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            if (!found)
+                TextRenderer.DrawText(g, "missing", lstItems.Font, new Rectangle(e.Bounds.Right - 70, e.Bounds.Y, 64, e.Bounds.Height),
+                    Warn, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+        }
+
+        void UpdateDocTab()
+        {
+            if (docTab == null) return;
+            var name = string.IsNullOrWhiteSpace(txtTitle.Text) ? "Untitled sheet" : txtTitle.Text.Trim();
+            docTab.Text = name + " @ Fit  (Letter 8.5 x 11 in)";
         }
 
         // ---------- rendering ----------
@@ -263,8 +378,8 @@ namespace ItemSheetMaker
             foreach (var c in items) lstItems.Items.Add(c);
             lstItems.EndUpdate();
             int missing = items.Count(c => lib.Find(c) == null);
-            lblCount.Text = items.Count + " item(s)" + (missing > 0 ? "  —  " + missing + " without photo" : "");
-            lblCount.ForeColor = missing > 0 ? Color.Firebrick : Color.Black;
+            lblCount.Text = items.Count + (items.Count == 1 ? " item" : " items") + (missing > 0 ? "   ·   " + missing + " without photo" : "");
+            lblCount.ForeColor = missing > 0 ? Warn : Text2;
             RefreshPreview();
         }
 
@@ -277,12 +392,11 @@ namespace ItemSheetMaker
             var pages = SheetRenderer.Paginate(items, o, out cols, out rows);
             pageIndex = Math.Max(0, Math.Min(pageIndex, pages.Count - 1));
             lblPage.Text = "Page " + (pageIndex + 1) + " of " + pages.Count;
-            btnPrev.Enabled = pageIndex > 0;
-            btnNext.Enabled = pageIndex < pages.Count - 1;
             if (o.AutoFit && items.Count > 0) { numCols.Tag = 1; }
-            var old = preview.Image;
-            preview.Image = SheetRenderer.RenderPage(pages[pageIndex], cols, rows, o, lib, 110f, pageIndex + 1, pages.Count);
-            if (old != null) old.Dispose();
+            if (lblStatus != null) lblStatus.Text = items.Count + (items.Count == 1 ? " item" : " items") + "   |   " +
+                (o.AutoFit ? "Auto-fit" : cols + " x " + rows + " grid") + "   |   8.5 x 11 in   |   Export 300 DPI   |   " +
+                (string.IsNullOrEmpty(lib.Folder) ? "No photos folder" : lib.Count + " photos in folder");
+            preview.SetPage(SheetRenderer.RenderPage(pages[pageIndex], cols, rows, o, lib, 110f, pageIndex + 1, pages.Count));
         }
 
         List<Bitmap> RenderAll(float dpi)

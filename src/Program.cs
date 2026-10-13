@@ -4,7 +4,9 @@ using System.Windows.Forms;
 
 [assembly: System.Reflection.AssemblyTitle("Item Sheet Maker")]
 [assembly: System.Reflection.AssemblyProduct("Item Sheet Maker")]
-[assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.3.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.3.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("1.3")]
 
 namespace ItemSheetMaker
 {
