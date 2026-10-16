@@ -11,6 +11,7 @@ namespace ItemSheetMaker
     public class MainForm : Form
     {
         PhotoLibrary lib = new PhotoLibrary(null);
+        readonly Dictionary<string, string> manualPhotos = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         readonly List<string> items = new List<string>();
 
         TextBox txtFolder, txtCode, txtTitle;
@@ -145,14 +146,15 @@ namespace ItemSheetMaker
                 if (e.KeyCode == Keys.Enter) { AddCodes(txtCode.Text); e.Handled = true; e.SuppressKeyPress = true; }
             };
             props.Controls.Add(txtCode); props.Controls.Add(btnAdd); y += 34;
-            hint("Press Enter after each code, or paste a list.", 14, y, 18); y += 24;
+            hint("Press Enter after each code or paste a list. Drag photos in, or double-click a missing item to pick its photo.", 14, y, 30); y += 36;
 
-            lstItems = new ListBox { Left = 14, Top = y, Width = 292, Height = 174, SelectionMode = SelectionMode.MultiExtended,
+            lstItems = new ListBox { Left = 14, Top = y, Width = 292, Height = 162, SelectionMode = SelectionMode.MultiExtended,
                 DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 24, BorderStyle = BorderStyle.FixedSingle, BackColor = PanelAlt,
                 ForeColor = Text1, IntegralHeight = false };
             lstItems.DrawItem += DrawListItem;
-            lstItems.KeyDown += (s, e) => { if (e.KeyCode == Keys.Delete) RemoveSelected(); };
-            props.Controls.Add(lstItems); y += 180;
+            lstItems.KeyDown += (s, e) => { if (e.KeyCode == Keys.Delete) RemoveSelected(); else if (e.KeyCode == Keys.Enter) ChoosePhotoForSelected(); };
+            lstItems.DoubleClick += (s, e) => ChoosePhotoForSelected();
+            props.Controls.Add(lstItems); y += 168;
             var btnUp = Btn("Up", false); var btnDown = Btn("Down", false);
             var btnRemove = Btn("Remove", false); var btnClear = Btn("Clear", false);
             int bx = 14;
@@ -248,6 +250,8 @@ namespace ItemSheetMaker
             LoadSettings();
             UpdateEnabled();
             RefreshAll();
+            foreach (Control c in new Control[] { this, preview, lstItems, props, center, docTab, tools, txtCode })
+                EnableDrop(c);
             Shown += (s, e) => txtCode.Focus();
         }
 
@@ -266,6 +270,7 @@ namespace ItemSheetMaker
             Cursor = Cursors.WaitCursor;
             lib.Dispose();
             lib = new PhotoLibrary(folder);
+            foreach (var kv in manualPhotos) lib.SetOverride(kv.Key, kv.Value);
             txtFolder.Text = folder ?? "";
             var ac = new AutoCompleteStringCollection();
             ac.AddRange(lib.Codes.Select(c => c.ToUpperInvariant()).ToArray());
@@ -275,6 +280,95 @@ namespace ItemSheetMaker
             Cursor = Cursors.Default;
             SaveSettings();
             RefreshAll();
+        }
+
+        // ---------- drag and drop / manual photos ----------
+        void EnableDrop(Control c)
+        {
+            c.AllowDrop = true;
+            c.DragEnter += (s, e) =>
+            {
+                e.Effect = DroppedPaths(e.Data).Length > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+                preview.DropActive = e.Effect != DragDropEffects.None;
+            };
+            c.DragOver += (s, e) => { e.Effect = DroppedPaths(e.Data).Length > 0 ? DragDropEffects.Copy : DragDropEffects.None; };
+            c.DragLeave += (s, e) => { preview.DropActive = false; };
+            c.DragDrop += (s, e) =>
+            {
+                preview.DropActive = false;
+                int row = -1;
+                if (s == lstItems)
+                {
+                    var pt = lstItems.PointToClient(new Point(e.X, e.Y));
+                    row = lstItems.IndexFromPoint(pt);
+                }
+                HandleDrop(DroppedPaths(e.Data), row);
+            };
+        }
+
+        static string[] DroppedPaths(IDataObject data)
+        {
+            if (data == null || !data.GetDataPresent(DataFormats.FileDrop)) return new string[0];
+            var paths = data.GetData(DataFormats.FileDrop) as string[];
+            if (paths == null) return new string[0];
+            return paths.Where(p => Directory.Exists(p) || (File.Exists(p) && PhotoLibrary.IsImageFile(p))).ToArray();
+        }
+
+        /// <summary>
+        /// Folder dropped: use it as the photos folder.
+        /// One photo dropped on a list row: use it for that item.
+        /// Photos dropped anywhere else: each fills a missing item with the same code, or is added as a new item named after the file.
+        /// </summary>
+        void HandleDrop(string[] paths, int row)
+        {
+            if (paths.Length == 0) return;
+            if (paths.Length == 1 && Directory.Exists(paths[0])) { SetFolder(paths[0]); return; }
+            var files = paths.Where(File.Exists).ToList();
+            if (files.Count == 0) return;
+
+            if (files.Count == 1 && row >= 0 && row < items.Count)
+            {
+                AssignPhoto(items[row], files[0]);
+                RefreshAll();
+                return;
+            }
+            int added = 0, filled = 0;
+            foreach (var f in files)
+            {
+                var code = Path.GetFileNameWithoutExtension(f).Trim().ToUpperInvariant();
+                if (code.Length == 0) continue;
+                if (items.Any(i => string.Equals(i, code, StringComparison.OrdinalIgnoreCase))) filled++;
+                else { items.Add(code); added++; }
+                AssignPhoto(code, f);
+            }
+            RefreshAll();
+            lstItems.ClearSelected();
+            lstItems.TopIndex = Math.Max(0, items.Count - 1);
+        }
+
+        void AssignPhoto(string code, string path)
+        {
+            manualPhotos[code.Trim()] = path;
+            lib.SetOverride(code, path);
+        }
+
+        void ChoosePhotoForSelected()
+        {
+            if (lstItems.SelectedIndices.Count != 1) return;
+            var code = items[lstItems.SelectedIndex];
+            using (var d = new OpenFileDialog
+            {
+                Title = "Choose photo for " + code,
+                Filter = "Images (*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.tif;*.tiff)|*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.tif;*.tiff|All files (*.*)|*.*"
+            })
+            {
+                if (Directory.Exists(txtFolder.Text)) d.InitialDirectory = txtFolder.Text;
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                int idx = lstItems.SelectedIndex;
+                AssignPhoto(code, d.FileName);
+                RefreshAll();
+                lstItems.SelectedIndex = idx;
+            }
         }
 
         // ---------- items ----------
@@ -342,6 +436,9 @@ namespace ItemSheetMaker
                 Text2, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
             TextRenderer.DrawText(g, code, lstItems.Font, new Rectangle(e.Bounds.X + 60, e.Bounds.Y, e.Bounds.Width - 60, e.Bounds.Height),
                 found ? Text1 : Warn, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            if (found && lib.IsOverride(code))
+                TextRenderer.DrawText(g, "added photo", lstItems.Font, new Rectangle(e.Bounds.Right - 90, e.Bounds.Y, 84, e.Bounds.Height),
+                    Text2, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
             if (!found)
                 TextRenderer.DrawText(g, "missing", lstItems.Font, new Rectangle(e.Bounds.Right - 70, e.Bounds.Y, 64, e.Bounds.Height),
                     Warn, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);

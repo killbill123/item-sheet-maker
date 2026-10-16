@@ -50,11 +50,26 @@ namespace ItemSheetMaker
         public int Count { get { return all.Count; } }
         public IEnumerable<string> Codes { get { return exact.Keys.OrderBy(k => k); } }
 
+        readonly Dictionary<string, string> overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Use a specific photo file for a code (drag and drop or "Choose photo").</summary>
+        public void SetOverride(string code, string path)
+        {
+            overrides[code.Trim()] = path;
+            foreach (var k in cache.Keys.Where(k => k.StartsWith(code.Trim() + "|", StringComparison.OrdinalIgnoreCase)).ToList())
+            { cache[k].Dispose(); cache.Remove(k); }
+        }
+
+        public bool IsOverride(string code) { return overrides.ContainsKey((code ?? "").Trim()); }
+
+        public static bool IsImageFile(string path) { return Exts.Contains(Path.GetExtension(path).ToLowerInvariant()); }
+
         public string Find(string code)
         {
             code = (code ?? "").Trim();
             if (code.Length == 0) return null;
             string p;
+            if (overrides.TryGetValue(code, out p) && File.Exists(p)) return p;
             if (exact.TryGetValue(code, out p)) return p;
             // Allow names like "WOP-187A front.jpg", "WOP-187A_1.jpg", "WOP-187A (2).jpg"
             foreach (var kv in all)

@@ -200,6 +200,8 @@ namespace ItemSheetMaker
         Image img;
         string label = "01 - Artboard 1  (Letter)";
         public string Label { get { return label; } set { if (value != label) { label = value; Invalidate(); } } }
+        bool dropActive;
+        public bool DropActive { get { return dropActive; } set { if (value != dropActive) { dropActive = value; Invalidate(); } } }
         public PagePreview() { DoubleBuffered = true; SetStyle(ControlStyles.ResizeRedraw, true); }
         public void SetPage(Image i) { var old = img; img = i; Invalidate(); if (old != null) old.Dispose(); }
         protected override void OnPaint(PaintEventArgs e)
@@ -217,6 +219,22 @@ namespace ItemSheetMaker
             using (var b = new SolidBrush(Color.FromArgb(70, 0, 0, 0))) g.FillRectangle(b, r.X + 4, r.Y + 4, r.Width, r.Height);
             g.DrawImage(img, r);
             using (var pen = new Pen(Color.FromArgb(0x2A, 0x2A, 0x2A))) g.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
+            if (dropActive)
+            {
+                var box = new RectangleF(12, 12, Width - 24, Height - 24);
+                using (var b = new SolidBrush(Color.FromArgb(60, MainForm.Blue))) g.FillRectangle(b, box);
+                using (var pen = new Pen(MainForm.Blue, 2f) { DashStyle = DashStyle.Dash }) g.DrawRectangle(pen, box.X, box.Y, box.Width, box.Height);
+                using (var f = new Font("Segoe UI Semibold", 13f))
+                using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                using (var bg = new SolidBrush(Color.FromArgb(220, 0x1E, 0x1E, 0x1E)))
+                {
+                    const string msg = "Drop photos to add them to the sheet";
+                    var sz = g.MeasureString(msg, f);
+                    var pill = new RectangleF((Width - sz.Width) / 2 - 18, (Height - sz.Height) / 2 - 10, sz.Width + 36, sz.Height + 20);
+                    using (var p = Gfx.Round(pill, 8)) g.FillPath(bg, p);
+                    g.DrawString(msg, f, Brushes.White, new RectangleF(0, 0, Width, Height), sf);
+                }
+            }
         }
     }
 }
