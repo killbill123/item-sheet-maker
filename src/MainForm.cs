@@ -220,6 +220,8 @@ namespace ItemSheetMaker
             tools.Add("Export PDF (Ctrl+E)", ToolRail.Icon.Pdf, () => SavePdf());
             tools.Add("Export JPEG (Ctrl+J)", ToolRail.Icon.Image, () => SaveJpeg());
             tools.Add("Print (Ctrl+P)", ToolRail.Icon.Printer, () => Print());
+            tools.AddSeparator();
+            tools.Add("Check for updates", ToolRail.Icon.Update, () => Updater.CheckAsync(this, true));
             KeyDown += (s, e) =>
             {
                 if (!e.Control) return;
@@ -252,7 +254,13 @@ namespace ItemSheetMaker
             RefreshAll();
             foreach (Control c in new Control[] { this, preview, lstItems, props, center, docTab, tools, txtCode })
                 EnableDrop(c);
-            Shown += (s, e) => txtCode.Focus();
+            Shown += (s, e) =>
+            {
+                txtCode.Focus();
+                var t = new Timer { Interval = 2500 };
+                t.Tick += (s2, e2) => { t.Stop(); t.Dispose(); Updater.CheckAsync(this, false); };
+                t.Start();
+            };
         }
 
         // ---------- folder ----------
@@ -647,7 +655,7 @@ namespace ItemSheetMaker
 
         void SaveSettings()
         {
-            try { File.WriteAllText(SettingsPath, "folder=" + txtFolder.Text + "\n"); } catch { }
+            Settings.Set("folder", txtFolder.Text);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)

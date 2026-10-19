@@ -105,7 +105,7 @@ namespace ItemSheetMaker
     /// <summary>Vertical tool strip with drawn icons.</summary>
     class ToolRail : Control
     {
-        public enum Icon { Folder, Plus, Grid, Pdf, Image, Printer }
+        public enum Icon { Folder, Plus, Grid, Pdf, Image, Printer, Update }
         class Tool { public string Tip; public Icon Ic; public Action Run; public bool Sep; }
         readonly List<Tool> tools = new List<Tool>();
         readonly ToolTip tip = new ToolTip { InitialDelay = 300 };
@@ -183,6 +183,11 @@ namespace ItemSheetMaker
                         g.DrawRectangle(pen, cx - 9, cy - 7, 18, 14);
                         g.DrawLines(pen, new[] { new PointF(cx - 7, cy + 5), new PointF(cx - 2, cy - 1), new PointF(cx + 2, cy + 3), new PointF(cx + 4, cy + 1), new PointF(cx + 7, cy + 5) });
                         g.DrawEllipse(pen, cx + 2, cy - 5, 3, 3);
+                        break;
+                    case Icon.Update:
+                        g.DrawArc(pen, cx - 8, cy - 8, 16, 16, 300, 290);
+                        g.DrawLines(pen, new[] { new PointF(cx + 3, cy - 10), new PointF(cx + 7, cy - 6), new PointF(cx + 2, cy - 4) });
+                        g.DrawLine(pen, cx, cy - 3, cx, cy + 3); g.DrawLine(pen, cx - 3, cy, cx, cy + 3); g.DrawLine(pen, cx + 3, cy, cx, cy + 3);
                         break;
                     case Icon.Printer:
                         g.DrawRectangle(pen, cx - 5, cy - 9, 10, 5);
