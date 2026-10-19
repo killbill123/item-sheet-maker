@@ -235,9 +235,12 @@ namespace ItemSheetMaker
                 using (var missPen = new Pen(Color.FromArgb(200, 200, 200), Math.Max(1f, dpi / 100f)) { DashStyle = DashStyle.Dash })
                 {
                     float labelH = fontPx * 1.8f;
+                    // Don't let cells get much taller than they are wide, otherwise wide photos
+                    // leave a big empty gap between rows. Rows are packed together instead.
+                    cellH = Math.Min(cellH, cellW * 1.2f + labelH);
                     float pad = Math.Min(cellW, cellH) * 0.06f;
                     int usedRows = Math.Max(1, (int)Math.Ceiling(codes.Count / (double)cols));
-                    float yOff = (rows - Math.Min(rows, usedRows)) * cellH / 2f;   // center the block vertically
+                    float yOff = Math.Max(0f, (areaH - Math.Min(rows, usedRows) * cellH) / 2f);   // center the block vertically
                     for (int i = 0; i < codes.Count; i++)
                     {
                         int c = i % cols, r = i / cols;
