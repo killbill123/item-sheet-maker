@@ -1,0 +1,10 @@
+Build the installer
+===================
+1. Build bin\ItemSheetMaker.exe (build.bat in the repo root).
+2. Copy ItemSheetMaker.exe, app.ico and a README.txt into this folder.
+3. Install NSIS 3 (https://nsis.sourceforge.io) and run:  makensis setup.nsi
+4. Upload ItemSheetMaker-Setup-X.Y.Z.exe to a new GitHub Release tagged vX.Y.Z.
+   The app's auto-update reads the latest release and downloads the asset whose name
+   contains "Setup" and ends with .exe, then runs it with /S (silent).
+
+Remember to bump the version in src/Program.cs (AssemblyVersion) and in setup.nsi.
