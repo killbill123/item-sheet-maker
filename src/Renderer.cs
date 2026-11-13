@@ -19,6 +19,9 @@ namespace ItemSheetMaker
         public bool TrimWhite = true;
         public string Title = "";
         public float MarginIn = 0.5f;
+        public bool ShowQty = true;                 // print the quantity under the item code
+        public IList<string> Quantities;            // one entry per item (same order as the item list); empty = none
+        public static readonly Color QtyColor = Color.FromArgb(0x00, 0x4F, 0xC4);
         public const int MaxAutoPerPage = 30;
     }
 
@@ -196,7 +199,7 @@ namespace ItemSheetMaker
         }
 
         public static Bitmap RenderPage(List<string> codes, int cols, int rows, SheetOptions o, PhotoLibrary lib,
-                                        float dpi, int pageNo, int pageCount)
+                                        float dpi, int pageNo, int pageCount, int startIndex = 0)
         {
             int W = (int)Math.Round(PageWIn * dpi), H = (int)Math.Round(PageHIn * dpi);
             var bmp = new Bitmap(W, H, PixelFormat.Format24bppRgb);
@@ -234,7 +237,18 @@ namespace ItemSheetMaker
                 using (var missFont = new Font("Arial", fontPx * 0.8f, FontStyle.Italic, GraphicsUnit.Pixel))
                 using (var missPen = new Pen(Color.FromArgb(200, 200, 200), Math.Max(1f, dpi / 100f)) { DashStyle = DashStyle.Dash })
                 {
-                    float labelH = fontPx * 1.8f;
+                    float codeH = fontPx * 1.8f, qtyH = fontPx * 1.35f;
+                    Func<int, string> qtyOf = i =>
+                    {
+                        if (!o.ShowQty || o.Quantities == null) return null;
+                        int k = startIndex + i;
+                        if (k < 0 || k >= o.Quantities.Count) return null;
+                        var q = (o.Quantities[k] ?? "").Trim();
+                        return q.Length == 0 ? null : q;
+                    };
+                    bool anyQty = false;
+                    for (int i = 0; i < codes.Count; i++) if (qtyOf(i) != null) { anyQty = true; break; }
+                    float labelH = codeH + (anyQty ? qtyH : 0);
                     // Don't let cells get much taller than they are wide, otherwise wide photos
                     // leave a big empty gap between rows. Rows are packed together instead.
                     cellH = Math.Min(cellH, cellW * 1.2f + labelH);
@@ -263,8 +277,17 @@ namespace ItemSheetMaker
                             g.DrawRectangle(missPen, box.X, box.Y, box.Width, box.Height);
                             g.DrawString("No photo found", missFont, Brushes.Gray, box, sf);
                         }
-                        var lbl = new RectangleF(x, imgBox.Bottom + pad * 0.3f, cellW, labelH);
+                        var lbl = new RectangleF(x, imgBox.Bottom + pad * 0.3f, cellW, codeH);
                         g.DrawString(codes[i].Trim().ToUpperInvariant(), font, Brushes.Black, lbl, sf);
+                        var q = qtyOf(i);
+                        if (q != null)
+                        {
+                            // plain numbers get a "Qty:" prefix; anything else (e.g. "2 boxes") is printed as typed
+                            double dummy;
+                            string text = double.TryParse(q, out dummy) ? "Qty: " + q : q;
+                            using (var qb = new SolidBrush(SheetOptions.QtyColor))
+                                g.DrawString(text, font, qb, new RectangleF(x, lbl.Bottom - fontPx * 0.25f, cellW, qtyH), sf);
+                        }
                     }
                 }
 

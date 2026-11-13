@@ -13,6 +13,9 @@ namespace ItemSheetMaker
         PhotoLibrary lib = new PhotoLibrary(null);
         readonly Dictionary<string, string> manualPhotos = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         readonly List<string> items = new List<string>();
+        readonly List<string> qtys = new List<string>();     // quantity per item, same order as items ("" = none)
+        TextBox txtQty;
+        CheckBox chkShowQty;
 
         TextBox txtFolder, txtCode, txtTitle;
         Label lblFolderInfo, lblCount, lblPage;
@@ -146,15 +149,16 @@ namespace ItemSheetMaker
                 if (e.KeyCode == Keys.Enter) { AddCodes(txtCode.Text); e.Handled = true; e.SuppressKeyPress = true; }
             };
             props.Controls.Add(txtCode); props.Controls.Add(btnAdd); y += 34;
-            hint("Press Enter after each code or paste a list. Drag photos in, or double-click a missing item to pick its photo.", 14, y, 30); y += 36;
+            hint("Type a code, then Enter. For quantity, add it after the code: WOP-187A 24", 14, y, 30); y += 36;
 
-            lstItems = new ListBox { Left = 14, Top = y, Width = 292, Height = 162, SelectionMode = SelectionMode.MultiExtended,
+            lstItems = new ListBox { Left = 14, Top = y, Width = 292, Height = 150, SelectionMode = SelectionMode.MultiExtended,
                 DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 24, BorderStyle = BorderStyle.FixedSingle, BackColor = PanelAlt,
                 ForeColor = Text1, IntegralHeight = false };
             lstItems.DrawItem += DrawListItem;
             lstItems.KeyDown += (s, e) => { if (e.KeyCode == Keys.Delete) RemoveSelected(); else if (e.KeyCode == Keys.Enter) ChoosePhotoForSelected(); };
             lstItems.DoubleClick += (s, e) => ChoosePhotoForSelected();
-            props.Controls.Add(lstItems); y += 168;
+            props.Controls.Add(lstItems); y += 156;
+            lstItems.SelectedIndexChanged += (s, e) => ShowSelectedQty();
             var btnUp = Btn("Up", false); var btnDown = Btn("Down", false);
             var btnRemove = Btn("Remove", false); var btnClear = Btn("Clear", false);
             int bx = 14;
@@ -162,9 +166,22 @@ namespace ItemSheetMaker
             btnUp.Click += (s, e) => MoveItem(-1);
             btnDown.Click += (s, e) => MoveItem(1);
             btnRemove.Click += (s, e) => RemoveSelected();
-            btnClear.Click += (s, e) => { if (items.Count > 0 && Confirm("Remove all items?")) { items.Clear(); RefreshAll(); } };
+            btnClear.Click += (s, e) => { if (items.Count > 0 && Confirm("Remove all items?")) { items.Clear(); qtys.Clear(); RefreshAll(); } };
             props.Controls.AddRange(new Control[] { btnUp, btnDown, btnRemove, btnClear });
             y += 34;
+            // quantity for the selected item(s): type and press Enter, the next item is selected for fast entry
+            lbl("Quantity", 14, y + 4);
+            txtQty = DarkText(80, y + 1, 70);
+            txtQty.ForeColor = Color.FromArgb(0x6F, 0xA8, 0xFF);
+            var btnQty = Btn("Set", false); btnQty.Left = 156; btnQty.Top = y; btnQty.Width = 50;
+            btnQty.Click += (s, e) => ApplyQty(false);
+            txtQty.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter) { ApplyQty(true); e.Handled = true; e.SuppressKeyPress = true; }
+            };
+            props.Controls.Add(txtQty); props.Controls.Add(btnQty);
+            lbl("for selected item(s)", 212, y + 4);
+            y += 32;
             lblCount = new Label { Left = 14, Top = y, Width = 292, Height = 20, Font = new Font("Segoe UI", 8.25f) };
             props.Controls.Add(lblCount); y += 28;
 
@@ -190,9 +207,11 @@ namespace ItemSheetMaker
             lbl("pt", 134, y + 3);
             props.Controls.Add(numFont); y += 30;
             chkTrim = new CheckBox { Text = "Trim white space around photos", Left = 14, Top = y, Width = 290, Checked = true, ForeColor = Text1 };
-            props.Controls.Add(chkTrim); y += 34;
+            props.Controls.Add(chkTrim); y += 26;
+            chkShowQty = new CheckBox { Text = "Show quantity under the item code (blue)", Left = 14, Top = y, Width = 290, Checked = true, ForeColor = Text1 };
+            props.Controls.Add(chkShowQty); y += 34;
 
-            foreach (Control c in new Control[] { rbAuto, rbFixed, numCols, numRows, numFont, chkTrim })
+            foreach (Control c in new Control[] { rbAuto, rbFixed, numCols, numRows, numFont, chkTrim, chkShowQty })
             {
                 if (c is RadioButton) ((RadioButton)c).CheckedChanged += (s, e) => { UpdateEnabled(); QueueRefresh(); };
                 else if (c is CheckBox) ((CheckBox)c).CheckedChanged += (s, e) => QueueRefresh();
@@ -346,7 +365,7 @@ namespace ItemSheetMaker
                 var code = Path.GetFileNameWithoutExtension(f).Trim().ToUpperInvariant();
                 if (code.Length == 0) continue;
                 if (items.Any(i => string.Equals(i, code, StringComparison.OrdinalIgnoreCase))) filled++;
-                else { items.Add(code); added++; }
+                else { items.Add(code); qtys.Add(""); added++; }
                 AssignPhoto(code, f);
             }
             RefreshAll();
@@ -380,16 +399,42 @@ namespace ItemSheetMaker
         }
 
         // ---------- items ----------
+        static bool IsQty(string t)
+        {
+            double d;
+            return t.Length > 0 && t.Length <= 7 && double.TryParse(t, System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out d);
+        }
+
+        /// <summary>
+        /// Accepts codes separated by commas, spaces or new lines. A number right after a code is its quantity:
+        /// "WOP-187A 24", "WOP-187A=24", "WOP-187A*24", or two columns pasted from Excel (code / qty).
+        /// </summary>
         void AddCodes(string text)
         {
-            var codes = (text ?? "").Split(new[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(c => c.Trim().ToUpperInvariant()).Where(c => c.Length > 0).ToList();
-            if (codes.Count == 0) return;
-            var missing = new List<string>();
-            foreach (var c in codes)
+            var tokens = (text ?? "").Split(new[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(c => c.Trim()).Where(c => c.Length > 0).ToList();
+            var added = new List<KeyValuePair<string, string>>();
+            foreach (var raw in tokens)
             {
-                items.Add(c);
-                if (lib.Find(c) == null) missing.Add(c);
+                var t = raw;
+                string q = "";
+                int k = t.IndexOfAny(new[] { '=', '*', ':' });
+                if (k > 0 && IsQty(t.Substring(k + 1))) { q = t.Substring(k + 1); t = t.Substring(0, k); }
+                else if (IsQty(t) && added.Count > 0 && added[added.Count - 1].Value == "")
+                {   // number after a code = quantity of that code
+                    added[added.Count - 1] = new KeyValuePair<string, string>(added[added.Count - 1].Key, t);
+                    continue;
+                }
+                t = t.ToUpperInvariant();
+                if (t.Length > 0) added.Add(new KeyValuePair<string, string>(t, q));
+            }
+            if (added.Count == 0) return;
+            var missing = new List<string>();
+            foreach (var kv in added)
+            {
+                items.Add(kv.Key); qtys.Add(kv.Value);
+                if (lib.Find(kv.Key) == null) missing.Add(kv.Key);
             }
             txtCode.Clear();
             txtCode.Focus();
@@ -400,10 +445,35 @@ namespace ItemSheetMaker
                 System.Media.SystemSounds.Exclamation.Play();
         }
 
+        void ShowSelectedQty()
+        {
+            if (txtQty == null || txtQty.Focused) return;
+            if (lstItems.SelectedIndices.Count == 1) txtQty.Text = qtys[lstItems.SelectedIndex];
+            else if (lstItems.SelectedIndices.Count == 0) txtQty.Text = "";
+        }
+
+        void ApplyQty(bool advance)
+        {
+            var sel = lstItems.SelectedIndices.Cast<int>().ToList();
+            if (sel.Count == 0) { MessageBox.Show(this, "Select an item in the list first.", Text); return; }
+            var q = txtQty.Text.Trim();
+            foreach (var i in sel) qtys[i] = q;
+            int next = sel.Max() + 1;
+            RefreshAll();
+            if (advance && sel.Count == 1 && next < items.Count)
+            {
+                lstItems.SelectedIndex = next;          // go to the next item so quantities can be typed one after another
+                txtQty.Text = qtys[next];
+                txtQty.SelectAll();
+            }
+            else foreach (var i in sel) lstItems.SetSelected(i, true);
+            txtQty.Focus();
+        }
+
         void RemoveSelected()
         {
             var idx = lstItems.SelectedIndices.Cast<int>().OrderByDescending(i => i).ToList();
-            foreach (var i in idx) items.RemoveAt(i);
+            foreach (var i in idx) { items.RemoveAt(i); qtys.RemoveAt(i); }
             RefreshAll();
         }
 
@@ -413,6 +483,7 @@ namespace ItemSheetMaker
             int i = lstItems.SelectedIndex, j = i + dir;
             if (j < 0 || j >= items.Count) return;
             var t = items[i]; items[i] = items[j]; items[j] = t;
+            var tq = qtys[i]; qtys[i] = qtys[j]; qtys[j] = tq;
             RefreshAll();
             lstItems.ClearSelected();
             lstItems.SelectedIndex = j;
@@ -444,6 +515,11 @@ namespace ItemSheetMaker
                 Text2, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
             TextRenderer.DrawText(g, code, lstItems.Font, new Rectangle(e.Bounds.X + 60, e.Bounds.Y, e.Bounds.Width - 60, e.Bounds.Height),
                 found ? Text1 : Warn, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            var qv = e.Index < qtys.Count ? qtys[e.Index] : "";
+            bool hasStatus = !found || lib.IsOverride(code);
+            if (qv.Length > 0)
+                TextRenderer.DrawText(g, "x" + qv, lstItems.Font, new Rectangle(e.Bounds.Right - (hasStatus ? 150 : 70), e.Bounds.Y, 64, e.Bounds.Height),
+                    Color.FromArgb(0x6F, 0xA8, 0xFF), TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
             if (found && lib.IsOverride(code))
                 TextRenderer.DrawText(g, "added photo", lstItems.Font, new Rectangle(e.Bounds.Right - 90, e.Bounds.Y, 84, e.Bounds.Height),
                     Text2, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
@@ -486,7 +562,9 @@ namespace ItemSheetMaker
                 Rows = (int)numRows.Value,
                 CodeFontPt = (float)numFont.Value,
                 TrimWhite = chkTrim.Checked,
-                Title = txtTitle.Text
+                Title = txtTitle.Text,
+                ShowQty = chkShowQty == null || chkShowQty.Checked,
+                Quantities = qtys
             };
         }
 
@@ -521,7 +599,8 @@ namespace ItemSheetMaker
                 (o.AutoFit ? "Auto-fit" : cols + " x " + rows + " grid") + "   |   8.5 x 11 in   |   Export 300 DPI   |   " +
                 (string.IsNullOrEmpty(lib.Folder) ? "No photos folder" : lib.Count + " photos in folder");
             UpdateArtboardLabel();
-            preview.SetPage(SheetRenderer.RenderPage(pages[pageIndex], cols, rows, o, lib, 110f, pageIndex + 1, pages.Count));
+            int start = pages.Take(pageIndex).Sum(p => p.Count);
+            preview.SetPage(SheetRenderer.RenderPage(pages[pageIndex], cols, rows, o, lib, 110f, pageIndex + 1, pages.Count, start));
         }
 
         List<Bitmap> RenderAll(float dpi)
@@ -530,8 +609,12 @@ namespace ItemSheetMaker
             var o = Options();
             var pages = SheetRenderer.Paginate(items, o, out cols, out rows);
             var list = new List<Bitmap>();
+            int start = 0;
             for (int i = 0; i < pages.Count; i++)
-                list.Add(SheetRenderer.RenderPage(pages[i], cols, rows, o, lib, dpi, i + 1, pages.Count));
+            {
+                list.Add(SheetRenderer.RenderPage(pages[i], cols, rows, o, lib, dpi, i + 1, pages.Count, start));
+                start += pages[i].Count;
+            }
             return list;
         }
 
