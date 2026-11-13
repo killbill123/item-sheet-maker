@@ -3,7 +3,7 @@ Unicode true
 
 !define APPNAME "Item Sheet Maker"
 !define COMPANY "Cebu Ricordi"
-!define VERSION "1.5.0"
+!define VERSION "1.6.0"
 !define EXE "ItemSheetMaker.exe"
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\ItemSheetMaker"
 
@@ -15,7 +15,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 BrandingText "${APPNAME} ${VERSION}"
 
-VIProductVersion "1.5.0.0"
+VIProductVersion "1.6.0.0"
 VIAddVersionKey "ProductName" "${APPNAME}"
 VIAddVersionKey "CompanyName" "${COMPANY}"
 VIAddVersionKey "FileDescription" "${APPNAME} Setup"
